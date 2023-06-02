@@ -1,0 +1,349 @@
+# 单个函数 ####
+  # 邻接矩阵函数 ####
+  lj_matrix_f <- function(point_number,data){ 
+  lj_matrix <- matrix(0,point_number,point_number)
+  for (i in 1:bian_number) {
+    head_point  <- data[i,'head']
+    tail_point <- data[i,'tail']
+    lj_matrix[head_point,tail_point] <- data[i,'length']
+  }
+  return(lj_matrix)
+  }
+  # 创建边的编号矩阵 ####
+  edge_matrix_f <- function(point_number,data){
+  edge_matrix <- matrix(0,point_number,point_number)
+  for (i in 1:bian_number) {
+    a <- data[i,'head']
+    b <- data[i,'tail']
+    edge_matrix[a,b] <- data[i,'number']
+  }
+  return(edge_matrix)
+  }
+  # floyd_D函数 ####
+  floyd_D <-function(A){
+  A[A==0] <- Inf
+  diag(A) <- 0
+  n<-nrow(A)
+  D<-A
+  path<-matrix(0,n,n)
+  for(i in 1:n){
+    for(j in 1:n){
+      if(is.finite(D[i,j])==T){path[i,j]=j}
+    }
+  }
+  for(k in 1:n){
+    for(i in 1:n){
+      for(j in 1:n){
+        if(D[i,k]+D[k,j]<D[i,j]){
+          D[i,j]=D[i,k]+D[k,j];
+          path[i,j]=path[i,k]
+        }
+      }
+    }
+  }
+  return(D)
+  }
+  # floyd_path函数 ####
+  floyd_path <-function(A){
+    A[A==0] <- Inf
+    diag(A) <- 0
+    n<-nrow(A)
+    D<-A
+    path<-matrix(0,n,n)
+    for(i in 1:n){
+      for(j in 1:n){
+        if(is.finite(D[i,j])==T){path[i,j]=j}
+      }
+    }
+    for(k in 1:n){
+      for(i in 1:n){
+        for(j in 1:n){
+          if(D[i,k]+D[k,j]<D[i,j]){
+            D[i,j]=D[i,k]+D[k,j];
+            path[i,j]=path[i,k]
+          }
+        }
+      }
+    }
+    return(path)
+  }
+  # 热力图绘制函数 ####
+  library(reshape2)
+  library(ggplot2)
+  reli <- function(matrix,titlename){
+    melted_cormat <- melt(matrix)
+    
+    ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+      geom_tile(color = "white")+
+      scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                           midpoint = 0,  space = "Lab", limits = c(0, 51),
+                           name="最短距离") +
+      theme_minimal()+ # minimal theme
+      theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                       size = 6, hjust = 1))+
+      coord_fixed() +
+      geom_text(aes(Var2, Var1, label = value), color = "black", size = 2)+
+      scale_x_continuous(breaks = seq(0, point_number, by = 1)) +
+      scale_y_continuous(breaks = seq(0, point_number, by = 1)) +
+      ggtitle(titlename)+
+      theme(plot.title = element_text(hjust = 0.5, vjust = 0.5,size = 16,face = 'bold'),axis.title.x=element_text(vjust=1, size=1,face = "bold"))
+    # Print the heatmap
+    print(ggheatmap)
+  }
+  # 
+  
+  # 各顶点到其他顶点最短路平均长度 ####
+  point_shortest_f <- function(lj_matrix){
+    d <- floyd_D(lj_matrix)
+    point_number <- nrow(lj_matrix)
+    point_shortest <- data.frame(matrix(nrow = point_number, ncol = 2))
+    colnames(point_shortest) <- c('point','shortest')
+    point_shortest$point <- c(1:point_number)
+    for (i in 1:point_number) {
+      point_shortest[i,'shortest'] <- round(sum(d[,i])/(point_number-1),2)
+    }  
+   return(point_shortest)
+  }
+  # 每条边最短路径经过次数 ####
+  edge_used <- function(lj_matrix,edge_matrix){
+    D <- floyd_D(lj_matrix)
+    path <- floyd_path(lj_matrix)
+    # 假设已经得到path和D矩阵
+    n <- nrow(D)
+    
+    # 初始化边的经过次数矩阵
+    edge_counts <- matrix(0, nrow=n, ncol=n)
+    
+    # 遍历每个节点对之间的最短路径
+    for (i in 1:n) {
+      for (j in 1:n) {
+        if (i != j) {
+          # 获取i到j的最短路径
+          path_nodes <- c(i, path[i,j], j) 
+          for (k in 1:(length(path_nodes)-1)) {
+            # 将该边在经过路径上的计数加1
+            start_node <- path_nodes[k]
+            end_node <- path_nodes[k+1]
+            edge_counts[start_node, end_node] <- edge_counts[start_node, end_node] + 1
+          }
+        }
+      }
+    }
+    bian <- c()
+    counts <- c()
+    for (i in 1:nrow(edge_matrix)) {
+      for (j in 1:nrow(edge_matrix)) {
+        if(edge_matrix[i,j]!=0){
+          bian <- append(bian,edge_matrix[i,j])
+          counts <- append(counts,edge_counts[i,j])
+        }
+      }
+    }
+    bian_used <- cbind(bian,counts)
+    colnames(bian_used) <- c('bian','counts') 
+    bian_used <- as.data.frame(bian_used)
+    bian_used <- bian_used[order(bian_used$bian),]
+    return(bian_used)
+  }
+  # 节点标签函数和最小生成树函数####
+  library(igraph)
+  library(ggplot2)
+  # 生成节点标签
+  generate_labels <- function(num_nodes) {
+    labels <- paste0(1:num_nodes)
+    return(labels)
+  }
+  
+  # 输出最小生成树图
+  generate_mst <- function(adj_matrix,labels) {
+    adj_matrix[adj_matrix==0] <- Inf
+    diag(adj_matrix) <- 0
+    # 将邻接矩阵转换为igraph对象
+    graph <- graph_from_adjacency_matrix(adj_matrix, mode = "undirected")
+    
+    # 计算最小生成树
+    mst <- minimum.spanning.tree(graph)
+    V(mst)$label <- labels
+    
+    # 设置绘图参数
+    plot(mst, layout = layout.fruchterman.reingold, vertex.color = "white", vertex.size = 10, edge.width = 3)
+    title(main='最小生成树')
+    return(mst)
+  }  
+
+  # 可视化全图的生成树 ####
+  quan_tu_f <- function(lj_matrix){
+    adj_matrix <- lj_matrix
+    point_number <- nrow(lj_matrix)
+    for (i in 1:point_number){
+      for (j in 1:point_number) {
+        if(adj_matrix[i,j]!=0){
+          adj_matrix[i,j] <- 1
+        }
+      } 
+    }
+    adj_matrix[adj_matrix==0] <- Inf
+    diag(adj_matrix) <- 0
+    graph <- graph_from_adjacency_matrix(adj_matrix, mode = "undirected")
+    plot(graph, layout = layout.fruchterman.reingold, vertex.color = "white", vertex.size = 10, edge.width = 3)
+    title(main='全图树')
+    
+l  }
+# 组合函数 ####
+  # 全图最短距离可视化 ####
+  quan_distance_plot <- function(lj_matrix){
+    d <- floyd_D(lj_matrix)
+    reli(d,'全图各顶点间最短路长度')
+  }
+  # 平均最短路长度可视化####
+  point_shortest_tu <- function(lj_matrix){
+    point_shortest <-  point_shortest_f(lj_matrix)
+  point_shortest <- point_shortest[order(point_shortest$shortest),]
+  
+  point_shortest$group <- 'grey'
+  point_shortest[c(1:3),'group'] <- 'lightgreen'
+  point_number2 <- point_number-2
+  point_shortest[c(point_number2:point_number),'group'] <- "#FF9200FF"
+  p <- ggplot(point_shortest,aes(x=point,y=shortest)) + geom_col(fill=point_shortest$group) +  ggtitle("全图各点到其他顶点的平均最短路长度") + scale_x_continuous(breaks = seq(1, point_number, by = 1)) + theme(plot.title = element_text(hjust = 0.5, vjust = 0.5,size = 16,face = 'bold')) + geom_text(aes(label = shortest), position = position_nudge(y = 0.2),size=3.9)+   coord_flip()
+  print(p)
+  }
+  # 每条边最短路径经过次数可视化 ####
+  bian_counts_f <- function(lj_matrix,edge_matrix){
+  edge_counts <- edge_used(lj_matrix,edge_matrix)
+  edge_counts <- edge_counts[order(edge_counts$counts),]
+  edge_counts$group <- 'grey'
+  edge_counts[c(1:6),'group'] <- 'lightgreen'
+  edge_counts[c((bian_number-5):bian_number),'group'] <- "#FF9200FF"
+  edge_counts <- edge_counts[order(edge_counts$counts,decreasing = FALSE),]
+  edge_counts$bian <- as.character(edge_counts$bian)
+  p <- ggplot(edge_counts,aes(x = reorder(bian, counts,decreasing = TRUE),y=counts)) +  ggtitle("各边在最短路径的经过次数") + geom_col(fill=edge_counts$group)   + theme(plot.title = element_text(hjust = 0.5, vjust = 0.5,size = 16,face = 'bold'),axis.text.x = element_text(size = 1, hjust = 0.5)) + geom_text(aes(label = counts,hjust = 1.5, vjust = 0.5), position = position_nudge(y = 0.5),size=2.5)+  coord_flip() + labs(x='结点',y='次数')
+  
+  print(p)
+  }
+  # 可视化最小生成树####
+  mintree_tu_f <- function(lj_matrix,point_number){
+    point_labels <- generate_labels(point_number)
+    generate_mst(lj_matrix,point_labels)  
+  }
+  # 输出最小生成树矩阵####
+  mintree_matrix_f <- function(lj_matrix) {
+    adj_matrix <- lj_matrix
+    adj_matrix[adj_matrix==0] <- Inf
+    diag(adj_matrix) <- 0
+    # 将邻接矩阵转换为igraph对象
+    graph <- graph_from_adjacency_matrix(adj_matrix, mode = "undirected")
+    
+    # 计算最小生成树
+    mst <- minimum.spanning.tree(graph)
+    mintree_matrix <- as_adjacency_matrix(mst)  
+    mintree_matrix <- as.matrix(mintree_matrix)
+    for (i in 1:point_number) {
+      for (j in 1:point_number) {
+        if(mintree_matrix[i,j] == 1){
+          mintree_matrix[i,j] <- lj_matrix[i,j]
+        }
+      }
+    }  
+    return(mintree_matrix)
+  }  
+
+  
+
+  
+  # 最小生成树各节点间的最短距离可视化####
+  mintree_d_f <- function(lj_matrix,point_number){
+    point_labels <- generate_labels(point_number)
+    mst <- generate_mst(lj_matrix,point_labels)  
+    mintree_matrix <- as_adjacency_matrix(mst)  
+    mintree_matrix <- as.matrix(mintree_matrix) # 将最小生成树转换为矩阵
+    for (i in 1:point_number) {
+      for (j in 1:point_number) {
+        if(mintree_matrix[i,j] == 1){
+          mintree_matrix[i,j] <- lj_matrix[i,j]
+        }
+      }
+    }# 将最小生成树矩阵附加权重
+    d <- floyd_D(mintree_matrix)
+    reli(d,'最小生成树上各顶点对之间的最短距离')
+  }
+  
+  # 添加边之后的矩阵####
+  add_matrix_f <- function(lj_matrix){
+    lj <- lj_matrix
+    singele1 <- c(19,20,20,21,22)
+    singele2 <- c(20,22,21,22,23)
+    mt_matrix <- mintree_matrix_f(lj_matrix)
+    for (i in 1:length(singele1)) {
+      mt_matrix[singele1[i],singele2[i]] <-  lj[singele1[i],singele2[i]]
+      mt_matrix[singele2[i],singele1[i]] <-   lj[singele2[i],singele1[i]]
+    }
+    return(mt_matrix)
+  }
+  # 添加边之后的最短距离可视化####
+  add_bian_f <- function(lj_matrix){
+  lj <- lj_matrix
+  singele1 <- c(19,20,20,21,22)
+  singele2 <- c(20,22,21,22,23)
+  mt_matrix <- mintree_matrix_f(lj_matrix)
+  for (i in 1:length(singele1)) {
+    mt_matrix[singele1[i],singele2[i]] <-  lj[singele1[i],singele2[i]]
+    mt_matrix[singele2[i],singele1[i]] <-   lj[singele2[i],singele1[i]]
+  }
+  d <- floyd_D(mt_matrix)
+  reli(d,'添加边后各个顶点之间的最短距离')
+  }
+  # 以全图的最短距离为基准####
+  jizhun_f1 <- function(lj_matrix){
+    a1 <- floyd_D(lj_matrix)
+    b  <- mintree_matrix_f(lj_matrix)
+    a2 <- floyd_D(b)
+    t1 <- a2-a1
+    reli(t1,'添加边前的最短距离差值可视化')
+    
+    
+  }
+  
+ 
+  jizhun_f2 <- function(lj_matrix){
+    a1 <- floyd_D(lj_matrix)
+    c <- add_matrix_f(lj_matrix)
+    a3 <- floyd_D(c)
+    t2 <- a3-a1
+    reli(t2,'添加边后的最短距离差值可视化')
+    
+    
+  }
+# 应用 ####
+  # 数据准备####
+  data <- read.csv("D:/documents/code_note/yunchou/bian.csv")
+  point_number <- max(data$head,data$tail)     # 点数
+  
+  bian_number <- nrow(data)                    # 边数
+  
+  lj_matrix <- lj_matrix_f(point_number,data)  # 创建邻接矩阵
+  edge_matrix <- edge_matrix_f(point_number,data) # 创建边的编号矩阵
+  # 解题 ####
+  quan_distance_plot(lj_matrix)        # 全图最短距离可视化--解决题目1
+  
+  point_shortest_tu(lj_matrix)         # 各顶点到其他顶点最短路平均值可视化--解决问题2
+  
+  bian_counts_f(lj_matrix,edge_matrix) # 每条边被最短路径的经过次数--解决问题3
+  
+  mintree_tu_f(lj_matrix,point_number) # 可视化最小生成树--解决问题4
+  
+  mintree_d_f(lj_matrix,point_number)  # 可视化最小生成树上各顶点对间的距离--解决问题4
+  
+  # 解决问题5####
+  quan_tu_f(lj_matrix)                 # 可视化全图生成树
+  
+  mintree_tu_f(lj_matrix,point_number) # 可视化最小生成树-
+
+  add_bian_f(lj_matrix)                # 添加边之后的最短距离可视化
+  mintree_d_f(lj_matrix,point_number)  # 添加边之前的最短距离可视化
+  
+  jizhun_f1(lj_matrix)                 # 添加边前后的最短距离差值可视化
+  jizhun_f2(lj_matrix)                 # 添加边后的最短距离差值可视化
+  
+  
+  
+  
